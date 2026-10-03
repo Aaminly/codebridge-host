@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+*.pyc
+qa/host-build/
+.wrangler/
+node_modules/
+.env
+.env.*
+*.token
+*.keystore
+*.jks

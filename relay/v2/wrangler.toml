@@ -1,0 +1,12 @@
+name = "codebridge-v2-local"
+main = "worker.js"
+compatibility_date = "2026-10-02"
+workers_dev = false
+[observability]
+enabled = false
+[[durable_objects.bindings]]
+name = "HOSTS"
+class_name = "HostPairing"
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["HostPairing"]
