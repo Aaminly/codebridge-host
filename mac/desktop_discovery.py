@@ -1,6 +1,8 @@
 """Read-only discovery. A reachable socket alone does not prove desktop ownership."""
 import asyncio
 import json
+import os
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -24,7 +26,19 @@ class ProbeResult:
 def discover(home: Path) -> list[Endpoint]:
     paths = [home / '.codex/app-server-control/app-server-control.sock',
              home / 'Library/Application Support/CodexMobile/desktop.sock']
-    return [Endpoint(path) for path in paths if path.is_socket()]
+    endpoints = [Endpoint(path) for path in paths if path.is_socket()]
+    base = paths[1].parent
+    if (base / 'host-v2/desktop.json').exists():
+        try:
+            owner = json.loads((base / 'desktop-owner.json').read_text())
+            os.kill(owner['pid'], 0)
+            parent = subprocess.run(['/bin/ps','-p',str(owner['pid']),'-o','ppid='],capture_output=True,text=True,check=True)
+            if int(parent.stdout.strip()) != owner['parentPid']:raise ValueError('Desktop detached')
+            app = subprocess.run(['/bin/ps','-p',str(owner['parentPid']),'-o','comm='],capture_output=True,text=True,check=True)
+            if not app.stdout.strip().startswith(owner['app']+'/'):raise ValueError('Desktop changed')
+        except (OSError,ValueError,KeyError,TypeError,subprocess.SubprocessError):
+            endpoints = [e for e in endpoints if e.socket_path != paths[1]]
+    return endpoints
 
 
 async def probe(endpoint: Endpoint) -> ProbeResult:

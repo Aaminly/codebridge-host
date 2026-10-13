@@ -1,5 +1,5 @@
 """No-window host: attaches to a proven desktop, never starts Codex."""
-import argparse,asyncio,fcntl,json,os,plistlib,signal,socket,sys,threading
+import argparse,asyncio,fcntl,json,os,plistlib,signal,socket,subprocess,sys,threading
 from pathlib import Path
 from desktop_discovery import discover,probe,choose
 from host_paths import PATHS
@@ -20,12 +20,18 @@ class HostState:
   except (OSError,ValueError,KeyError):
    self.snapshot['connectionError']='安全连接身份或配置无法读取，尚未连接；请重新启用组件并完成系统授权'
  async def refresh(self):
+  previous=self.endpoint
   results=await asyncio.gather(*(probe(e) for e in discover(PATHS.home)))
   try:
    selected=choose(results,self.expected_thread);self.endpoint=selected.endpoint
    value={'connected':True,'reason':'','version':selected.version,'loadedThreads':len(selected.loaded_thread_ids)}
   except ValueError:
    self.endpoint=None;value={'connected':False,'reason':'未发现可确认的桌面实例' if len(results)<2 else '存在多个桌面实例，尚未确认当前会话归属'}
+  if self.runtime and previous is not None and self.endpoint!=previous:
+   for peer in list(self.runtime.peers.values()):
+    peer.cancel()
+    if self.runtime.socket:await peer.close(1013,'Desktop disconnected')
+   self.runtime.peers.clear()
   with self.lock:self.snapshot.update(value)
  def status(self):
   with self.lock:value=dict(self.snapshot)
@@ -34,9 +40,20 @@ class HostState:
    for p in value['pairings']:
     if p['state']=='offered' and p['id'] in self.offers:p['qr']=self.offers[p['id']]
   value['relayConfigured']=self.configured
+  try:
+   from desktop_integration import read
+   value['desktopConfigured']=read().get('enabled',False)
+  except (OSError,ValueError):value['desktopError']='桌面共享入口配置无法读取，请重新确认设置'
   value['autostart']=(PATHS.home/'Library/LaunchAgents/dev.codebridge.host-v2.plist').exists()
   return value
  def action(self,path,body):
+  if path=='/api/desktop/enable':
+   if self.endpoint is not None:return {'status':'connected','message':'桌面共享入口已连接，无需更改启动方式。'}
+   from desktop_integration import enable
+   result=enable();self.snapshot.pop('desktopError',None);return result
+  if path=='/api/desktop/open':
+   from desktop_integration import open_desktop
+   return open_desktop()
   if path=='/api/autostart':
    if type(body.get('enabled')) is not bool:raise ValueError('Invalid login preference')
    autostart(body['enabled']);return {'enabled':body['enabled']}
@@ -63,7 +80,8 @@ async def run(expected_thread=None,open_browser=True):
     webbrowser.open(existing['url'])
    return
   control_path=PATHS.host/'control.sock';control_path.unlink(missing_ok=True)
-  state=HostState(expected_thread);await state.refresh();console=start_console(state);stop=asyncio.Event();relay_job=None
+  state=HostState(expected_thread)
+  await state.refresh();console=start_console(state);stop=asyncio.Event();relay_job=None
   config_path=PATHS.host/'relay.json'
   if not config_path.exists():config_path=Path(__file__).with_name('release_relay.json')
   if config_path.exists():
@@ -90,7 +108,8 @@ async def run(expected_thread=None,open_browser=True):
   loop=asyncio.get_running_loop()
   def disable_and_stop():
    async def disable():
-    await asyncio.sleep(.25);await asyncio.to_thread(autostart,False);stop.set()
+    from desktop_integration import disable
+    await asyncio.sleep(.25);await asyncio.to_thread(disable);await asyncio.to_thread(autostart,False);stop.set()
    loop.call_soon_threadsafe(lambda:asyncio.create_task(disable()))
   state.stop=disable_and_stop
   for sig in (signal.SIGTERM,signal.SIGINT):loop.add_signal_handler(sig,stop.set)
@@ -137,11 +156,16 @@ def autostart(enabled):
  subprocess.run(['/bin/launchctl','bootstrap',domain,str(agent)],check=True,capture_output=True)
 
 def main():
+ if len(sys.argv)>1 and sys.argv[1] not in ('run','status','stop','uninstall','enable-autostart','disable-autostart','--help','-h'):
+  from desktop_connector import proxy
+  asyncio.run(proxy(sys.argv[1:]));return
  parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('command',nargs='?',default='run',choices=['run','status','stop','uninstall','enable-autostart','disable-autostart'])
  parser.add_argument('--thread-id');parser.add_argument('--no-browser',action='store_true');args=parser.parse_args()
  if args.command=='run':asyncio.run(run(args.thread_id,not args.no_browser))
  elif args.command in ('status','stop'):print(json.dumps(control(args.command),ensure_ascii=False))
  elif args.command=='uninstall':
+  from desktop_integration import disable
+  disable()
   autostart(False)
   if (PATHS.host/'control.sock').is_socket():control('stop')
   # Credentials, chats, original bridge and application files are deliberately retained.

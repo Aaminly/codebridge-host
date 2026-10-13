@@ -1,4 +1,4 @@
-name = "codebridge-v2-local"
+name = "codebridge-host-relay"
 main = "worker.js"
 compatibility_date = "2026-10-02"
 workers_dev = false

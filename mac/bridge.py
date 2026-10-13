@@ -2,7 +2,7 @@ import asyncio,json,os,secrets,hmac,ssl,uuid,base64
 from pathlib import Path
 from host_paths import PATHS
 from file_preview import collect_links,read_preview
-import project_creation,project_removal,file_upload
+import project_creation,project_removal,file_upload,file_download
 from websockets.asyncio.server import serve
 from websockets.asyncio.client import unix_connect
 BASE=PATHS.base
@@ -35,7 +35,7 @@ def resolve_local_images(value):
   # Only resolve paths supplied by the authenticated desktop response, never phone parameters.
   try:
    path=Path(value['path']);size=path.stat().st_size
-   if size>2_900_000:raise ValueError('附件超过当前图片传输限制')
+   if size>20*1024*1024:raise ValueError('附件超过 20 MB 图片传输限制')
    data=path.read_bytes()
    mime='image/png' if data.startswith(b'\x89PNG\r\n\x1a\n') else 'image/jpeg' if data.startswith(b'\xff\xd8\xff') else 'image/webp' if data[:4]==b'RIFF' and data[8:12]==b'WEBP' else None
    if not mime:raise ValueError('暂不支持此图片格式')
@@ -43,7 +43,7 @@ def resolve_local_images(value):
   except (OSError,ValueError) as e:return {'type':'imageError','message':str(e) if isinstance(e,ValueError) else '电脑上的原图已不可读取'}
  return {k:resolve_local_images(v) for k,v in value.items()}
 async def handle_phone(phone,desktop_path=None):
- allowed_files=set();selectable_files=set();uploads=file_upload.Uploads()
+ allowed_files=set();selectable_files=set();uploads=file_upload.Uploads();downloads=file_download.Downloads()
  try:
   async with unix_connect(str(desktop_path or BASE/'desktop.sock'),uri='ws://localhost/',max_size=32*1024*1024,close_timeout=1) as desktop:
    async def upstream():
@@ -64,6 +64,13 @@ async def handle_phone(phone,desktop_path=None):
        await phone.send(json.dumps({'id':x['id'],'result':result}))
       except (OSError,ValueError,KeyError,TypeError) as e:await phone.send(json.dumps({'id':x.get('id'),'error':{'code':-32602,'message':str(e)}}))
       continue
+     if m in {'mobile/files/downloadStart','mobile/files/downloadChunk','mobile/files/downloadEnd'}:
+      try:
+       if m=='mobile/files/downloadStart':await file_download.LOCAL.start(BASE)
+       action={'mobile/files/downloadStart':lambda p:downloads.start(p,allowed_files),'mobile/files/downloadChunk':downloads.chunk,'mobile/files/downloadEnd':downloads.end}[m]
+       result=await asyncio.to_thread(action,x.get('params',{}))
+      except (OSError,ValueError,KeyError,TypeError) as e:result={'error':str(e)}
+      await phone.send(json.dumps({'id':x['id'],'result':result}));continue
      if m=='mobile/files/read':
       result=await asyncio.to_thread(read_preview,x.get('params',{}).get('path',''),allowed_files)
       for message in mobile_messages(json.dumps({'id':x['id'],'result':result},ensure_ascii=False)):await phone.send(message)
@@ -87,6 +94,14 @@ async def handle_phone(phone,desktop_path=None):
       await phone.send(json.dumps({'id':x.get('id'),'error':{'code':-32601,'message':'Unsupported mobile operation'}}));continue
      if m=='thread/settings/update' and (not isinstance(x.get('params'),dict) or set(x['params'])-{'threadId','model','effort','serviceTier'}):
       await phone.send(json.dumps({'id':x.get('id'),'error':{'code':-32602,'message':'Only model, reasoning effort and service tier may be updated'}}));continue
+     if m=='thread/start' and isinstance(x.get('params',{}),dict) and not x.get('params',{}).get('cwd') and not x.get('params',{}).get('projectId'):
+      try:
+       folder=Path.home()/'Documents'/'Codex'/'phone-chats'/uuid.uuid4().hex
+       folder.mkdir(parents=True)
+       x['params']={**x.get('params',{}),'cwd':str(folder),'runtimeWorkspaceRoots':[str(folder)],'projectId':None}
+       raw=json.dumps(x)
+      except OSError:
+       await phone.send(json.dumps({'id':x.get('id'),'error':{'code':-32603,'message':'无法准备普通聊天工作目录，聊天尚未创建'}}));continue
      await desktop.send(raw)
    async def downstream():
     async for raw in desktop:
@@ -102,7 +117,9 @@ async def handle_phone(phone,desktop_path=None):
     for job in jobs:job.cancel()
     await asyncio.gather(*jobs,return_exceptions=True)
  except (OSError,TimeoutError):await phone.close(1013,'Desktop connection is not ready')
- finally:await asyncio.to_thread(uploads.close)
+ finally:
+  await asyncio.to_thread(uploads.close)
+  await asyncio.to_thread(downloads.close)
 
 async def main():
  token=(BASE/'device.token').read_text().strip()

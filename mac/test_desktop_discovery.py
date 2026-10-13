@@ -50,6 +50,13 @@ class DiscoveryChecks(unittest.IsolatedAsyncioTestCase):
      result=await probe(Endpoint(path))
     self.assertIsNotNone(result.error)
 
+ async def test_owned_socket_is_hidden_after_desktop_disconnect(self):
+  with tempfile.TemporaryDirectory(dir='/tmp') as tmp:
+   home=Path(tmp);base=home/'Library/Application Support/CodexMobile';base.mkdir(parents=True)
+   config=base/'host-v2/desktop.json';config.parent.mkdir();config.write_text(json.dumps({'enabled':True}))
+   async with unix_serve(lambda ws: ws.wait_closed(),str(base/'desktop.sock')):
+    self.assertEqual(discover(home),[])
+
  def test_selection_requires_unambiguous_loaded_thread(self):
   first=ProbeResult(Endpoint(Path('/a')), '1',frozenset(['a']))
   second=ProbeResult(Endpoint(Path('/b')), '1',frozenset(['target']))

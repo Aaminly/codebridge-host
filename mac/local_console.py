@@ -61,7 +61,7 @@ def start_console(host_state,bind='127.0.0.1',port=0):
      handle.capability='';key=secrets.token_urlsafe(32);csrf=secrets.token_urlsafe(32)
      handle.sessions={key:(csrf,time.monotonic()+28800)}
     self.reply(200,{'csrf':csrf},f'cb_session={key}; HttpOnly; SameSite=Strict; Path=/');return
-   if not (self.path in ('/api/pairings','/api/autostart','/api/uninstall') or re.fullmatch(r'/api/(?:pairings/[A-Za-z0-9_-]{1,80}/(?:approve|reject)|devices/[A-Za-z0-9_-]{1,80}/revoke)',self.path)):
+   if not (self.path in ('/api/pairings','/api/autostart','/api/uninstall','/api/desktop/enable','/api/desktop/open') or re.fullmatch(r'/api/(?:pairings/[A-Za-z0-9_-]{1,80}/(?:approve|reject)|devices/[A-Za-z0-9_-]{1,80}/revoke)',self.path)):
     self.reply(404,{'error':'Unknown route'});return
    if not self.session(True):return
    try:self.reply(200,host_state.action(self.path,body))

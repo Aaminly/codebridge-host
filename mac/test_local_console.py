@@ -27,6 +27,12 @@ class ConsoleChecks(unittest.TestCase):
   self.bootstrap()
   self.assertEqual(self.request('POST','/api/autostart',{'enabled':True})[0],200)
   self.assertEqual(self.request('POST','/api/uninstall',{})[0],200)
+ def test_desktop_setup_requires_the_owner_session_and_csrf(self):
+  self.assertEqual(self.request('POST','/api/desktop/enable',{})[0],401)
+  self.bootstrap()
+  self.assertEqual(self.request('POST','/api/desktop/enable',{}, {'X-CSRF-Token':''})[0],403)
+  self.assertEqual(self.state.actions,[])
+  self.assertEqual(self.request('POST','/api/desktop/enable',{})[0],200)
  def test_trust_boundary_rejects_mutation(self):
   self.bootstrap()
   for h in [{'Host':'evil.example'},{'Origin':'https://evil.example'},{'X-CSRF-Token':''},{'Cookie':''},{'Origin':''}]:

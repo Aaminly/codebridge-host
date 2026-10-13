@@ -75,7 +75,9 @@ def create(params):
   operations[key]=operation;_save(operations) # Save before dispatch: uncertain outcomes are never automatically retried.
   if _status(operation)['status']=='ready':return _status(operation)
   try:
-   result=subprocess.run(['/usr/bin/open','-a','/Applications/ChatGPT.app',path.as_uri()],capture_output=True,timeout=10)
+   from desktop_integration import read
+   config=read();app=config['app'] if config.get('enabled') else '/Applications/ChatGPT.app'
+   result=subprocess.run(['/usr/bin/open','-a',app,path.as_uri()],capture_output=True,timeout=10)
    if result.returncode:raise RuntimeError('Mac 未能打开所选文件夹')
   except (OSError,subprocess.TimeoutExpired,RuntimeError) as e:
    operation={**operation,'status':'error','message':'电脑端创建请求未确认，请检查桌面状态'};operations[key]=operation;_save(operations)

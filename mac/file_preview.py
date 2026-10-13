@@ -19,8 +19,9 @@ def collect_links(value,allowed):
  elif isinstance(value,list):
   for v in value:collect_links(v,allowed)
  elif isinstance(value,dict):
-  if value.get('type')=='mention' and isinstance(value.get('path'),str):
-   try:allowed.add(str(local_path(value['path'])))
+  key='savedPath' if value.get('type')=='imageGeneration' else 'path'
+  if value.get('type') in {'mention','skill','localImage','localAudio','imageView','imageGeneration'} and isinstance(value.get(key),str):
+   try:allowed.add(str(local_path(value[key])))
    except ValueError:pass
   for v in value.values():collect_links(v,allowed)
 
