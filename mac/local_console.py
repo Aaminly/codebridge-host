@@ -9,10 +9,21 @@ class ConsoleHandle:
   self.server=server;self.capability=secrets.token_urlsafe(32);self.bootstrap_expires=time.monotonic()+60
   self.sessions={};self.lock=threading.Lock();self.origin=f'http://127.0.0.1:{server.server_port}'
   self.url=self.origin+'/#bootstrap='+self.capability
+ def save_handoff(self,path):
+  with self.lock:
+   data={'port':self.server.server_port,'writtenAt':time.monotonic(),'sessions':self.sessions,'capability':self.capability,'bootstrapExpires':self.bootstrap_expires}
+   temporary=path.with_suffix('.tmp')
+   with temporary.open('w') as out:temporary.chmod(0o600);json.dump(data,out)
+   temporary.replace(path)
  def shutdown(self):self.server.shutdown();self.server.server_close()
 
-def start_console(host_state,bind='127.0.0.1',port=0):
+def start_console(host_state,bind='127.0.0.1',port=0,handoff=None):
  if bind!='127.0.0.1':raise ValueError('Console must use IPv4 loopback')
+ previous=None
+ if handoff and handoff.exists():
+  previous=json.loads(handoff.read_text());handoff.unlink()
+  if not 0<=time.monotonic()-previous['writtenAt']<=60:previous=None
+  if previous:port=previous['port']
  class Handler(BaseHTTPRequestHandler):
   def setup(self):super().setup();self.connection.settimeout(5)
   def log_message(self,*args):pass # No capability, cookie, path or payload logging.
@@ -43,8 +54,9 @@ def start_console(host_state,bind='127.0.0.1',port=0):
   def do_GET(self):
    if not self.boundary():return
    if self.path=='/':self.reply(200,(Path(__file__).parent/'web/index.html').read_bytes(),html=True);return
-   if self.path!='/api/status':self.reply(404,{'error':'Unknown route'});return
-   if self.session():self.reply(200,host_state.status())
+   if self.path not in ('/api/status','/api/session'):self.reply(404,{'error':'Unknown route'});return
+   session=self.session()
+   if session:self.reply(200,{'csrf':session[0]} if self.path=='/api/session' else host_state.status())
   def do_POST(self):
    if not self.boundary(True):return
    try:
@@ -61,12 +73,15 @@ def start_console(host_state,bind='127.0.0.1',port=0):
      handle.capability='';key=secrets.token_urlsafe(32);csrf=secrets.token_urlsafe(32)
      handle.sessions={key:(csrf,time.monotonic()+28800)}
     self.reply(200,{'csrf':csrf},f'cb_session={key}; HttpOnly; SameSite=Strict; Path=/');return
-   if not (self.path in ('/api/pairings','/api/autostart','/api/uninstall','/api/desktop/enable','/api/desktop/open') or re.fullmatch(r'/api/(?:pairings/[A-Za-z0-9_-]{1,80}/(?:approve|reject)|devices/[A-Za-z0-9_-]{1,80}/revoke)',self.path)):
+   if not (self.path in ('/api/pairings','/api/install','/api/autostart','/api/uninstall','/api/desktop/enable','/api/desktop/open') or re.fullmatch(r'/api/(?:pairings/[A-Za-z0-9_-]{1,80}/(?:approve|reject)|devices/[A-Za-z0-9_-]{1,80}/revoke)',self.path)):
     self.reply(404,{'error':'Unknown route'});return
    if not self.session(True):return
    try:self.reply(200,host_state.action(self.path,body))
    except (ValueError,RuntimeError,OSError) as e:self.reply(409,{'error':str(e) if isinstance(e,ValueError) else 'Action failed; no success confirmed'})
  server=ThreadingHTTPServer((bind,port),Handler);server.daemon_threads=True
  handle=ConsoleHandle(server)
+ if previous:
+  handle.sessions=previous['sessions'];handle.capability=previous['capability'];handle.bootstrap_expires=previous['bootstrapExpires']
+  handle.url=handle.origin+'/#bootstrap='+handle.capability
  threading.Thread(target=server.serve_forever,name='codebridge-console',daemon=True).start()
  return handle

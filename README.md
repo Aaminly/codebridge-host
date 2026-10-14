@@ -2,7 +2,7 @@
 
 这是码桥的独立 Mac 连接组件源码，用于审查和自行构建。组件提供本机配置网页、Android 配对与加密中继连接，接入正在运行的真实 Codex 桌面实例；不依赖 Codex 官方扫码连接。
 
-当前提供 arm64 候选组件；中继部署在 https://aly-codex-mobile.pages.dev 。单元与模拟器检查不能替代第二台独立 Codex Mac、真实摄像头扫码和全部桌面业务验收。尚无 Developer ID 签名与公证。公开源码不等于完成独立安全审计。本项目组件源码采用 MIT 许可证，第三方依赖保持各自许可。
+当前提供 arm64 组件；中继部署在 https://aly-codex-mobile.pages.dev 。单元与模拟器检查不能替代第二台独立 Codex Mac、真实摄像头扫码和全部桌面业务验收。尚无 Developer ID 签名与公证。公开源码不等于完成独立安全审计。本项目组件源码采用 MIT 许可证，第三方依赖保持各自许可。
 
 ## 组件做什么
 
@@ -22,7 +22,7 @@
 
 ## 构建与运行
 
-开发者需要 macOS、Python 3.14 和下列固定依赖；最终用户运行构建好的组件无需安装系统 Python。
+开发者需要 macOS、Apple Command Line Tools（clang/pkgbuild）、Python 3.14 和下列固定依赖；最终用户运行构建好的组件无需安装系统 Python。
 
 ```sh
 python3 -m venv .venv
@@ -30,7 +30,7 @@ python3 -m venv .venv
 .venv/bin/python mac/package_host.py
 ```
 
-输出：`qa/host-build/dist/CodeBridge Host.app`。默认包含上述生产中继地址。开发构建使用 ad-hoc 签名，不是可直接商业分发的签名公证包。启动组件默认打开配置网页；未配置真实公网服务时配对按钮禁用。
+输出：`qa/host-build/dist/CodeBridge Host.app` 和 `qa/host-build/CodeBridgeHost-0.1.1-arm64.pkg`。默认包含上述生产中继地址。开发构建使用 ad-hoc 签名，不是可直接商业分发的签名公证包。启动组件默认打开配置网页；未配置真实公网服务时配对按钮禁用。
 
 自建服务后，构建时传入自己的真实 HTTPS origin：
 
@@ -46,15 +46,16 @@ wrangler dev --local --config relay/v2/wrangler.toml --port 8789
 
 当前发现机制不保证所有 Codex 版本均有可共享的桌面入口；无法发现或实例归属不明确时会显示错误，不启动替代服务。Mac 必须保持登录、联网并处于运行状态，组件不能从关机或睡眠状态自行运行。
 
-## 独立 Codex App 安装与配对
+## 一次安装与网页管理
 
-1. 解压后将 CodeBridge Host.app 放入本机或当前用户的 Applications 文件夹；安装官方独立 Codex.app。
-2. 打开码桥组件，在本机配置页启用桌面共享入口，再点击“打开 Codex”。码桥校验官方应用签名，只对这次指定进程设置启动入口，不修改系统全局环境或官方应用文件。
-3. 如果 Codex 已经打开，现有任务继续运行；共享入口需等用户下次正常启动 Codex。码桥不会自动退出它。
-4. 配置页确认真实桌面与中继连接后点击“连接手机”。手机扫码，核对两端指纹，在 Mac 批准并在手机确认。
-5. 手机可保存多个主机，每次只连接一个，切换后项目、会话和草稿按主机隔离。
+1. 安装官方独立 Codex.app。打开发布页 https://aly-codex-mobile.pages.dev/download/mac/index.html ，使用标准 `.pkg` 安装组件到 `/Applications/CodeBridge Host.app`；安装包仅写入此组件，不匹配或更新其他 Python 安装。
+2. 首次打开 CodeBridge Host，在本机网页点击“完成设置并启动”。它校验官方 Codex 签名，启用共享入口，打开指定 Codex，并注册当前用户的 LaunchAgent。正在运行的 Codex 不会被关闭；首次共享需等用户下次正常启动接入。
+3. 此后登录时后台启动并通过共享入口打开 Codex。网页可关闭，后台保持运行；只有登录、联网且 Mac 未睡眠时才能连接。
+4. 后续通过应用程序或 Spotlight 打开 CodeBridge Host，即可打开管理网页。启动器只打开网页后退出；后台服务独立运行，重复打开不会启动第二个服务。按用户选择保留 60 秒单次 bootstrap 和 8 小时 HttpOnly/SameSite 会话，不新增管理密码；有效会话允许刷新，过期后重新打开组件。管理页仅本机 loopback 可用，不是公网管理页面。
+5. 桌面与中继连接确认后，点击“连接手机”。手机扫码，核对指纹，在 Mac 批准并在手机确认。手机可保存多台主机，每次连接一台，项目、会话和草稿隔离。
+6. 登录自动连接、设备撤销与停用均在网页管理。关闭登录自动连接保留当前服务，停用才停止组件；聊天、草稿和身份记录保留。
 
-开发包只有 ad-hoc 签名。系统首次阻止打开时，按 macOS 正常“隐私与安全性 → 仍要打开”流程处理；不关闭 Gatekeeper、不移除隔离标记。无法确认真实桌面连接时不生成可用配对成功状态。当前无 Intel 构建，也未验证所有独立 Codex 版本。
+升级打开新组件时，保留原配对目录，等待旧进程锁释放，恢复原登录自动连接偏好并交给后台；短时接管保留当前网页授权。发行组件仅 ad-hoc 签名，安装包没有 Developer ID Installer 签名或 Apple 公证。按 macOS 正常“隐私与安全性 → 仍要打开”流程处理，不关闭 Gatekeeper。没有 Intel 包，也没有第二台实际 Mac 的安装／登录启动与完整桌面业务验收。
 
 ## 检查
 

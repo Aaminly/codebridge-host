@@ -1,4 +1,5 @@
-import http.client,json,unittest
+import http.client,json,unittest,tempfile
+from pathlib import Path
 from urllib.parse import urlsplit
 from local_console import start_console
 
@@ -28,11 +29,30 @@ class ConsoleChecks(unittest.TestCase):
   self.assertEqual(self.request('POST','/api/autostart',{'enabled':True})[0],200)
   self.assertEqual(self.request('POST','/api/uninstall',{})[0],200)
  def test_desktop_setup_requires_the_owner_session_and_csrf(self):
+  self.assertEqual(self.request('POST','/api/install',{})[0],401)
   self.assertEqual(self.request('POST','/api/desktop/enable',{})[0],401)
   self.bootstrap()
   self.assertEqual(self.request('POST','/api/desktop/enable',{}, {'X-CSRF-Token':''})[0],403)
   self.assertEqual(self.state.actions,[])
   self.assertEqual(self.request('POST','/api/desktop/enable',{})[0],200)
+  self.assertEqual(self.request('POST','/api/install',{}, {'X-CSRF-Token':''})[0],403)
+  self.assertEqual(self.request('POST','/api/install',{})[0],200)
+ def test_reload_can_resume_only_an_authenticated_session(self):
+  self.assertEqual(self.request('GET','/api/session')[0],401)
+  self.bootstrap();self.assertEqual(self.request('GET','/api/session')[2]['csrf'],self.csrf)
+  self.assertEqual(self.request('GET','/api/session',headers={'Origin':'https://other.invalid'})[0],403)
+
+ def test_service_handoff_keeps_current_page_authenticated(self):
+  self.bootstrap();port=self.parts.port
+  with tempfile.TemporaryDirectory() as tmp:
+   path=Path(tmp)/'handoff.json'
+   self.server.save_handoff(path);self.server.shutdown()
+   self.server=start_console(self.state,handoff=path)
+   self.assertEqual(self.server.server.server_port,port)
+   self.assertEqual(self.request('POST','/api/pairings',{})[0],200)
+   self.assertEqual(self.request('POST','/api/pairings',{}, {'X-CSRF-Token':''})[0],403)
+   self.assertFalse(path.exists())
+
  def test_trust_boundary_rejects_mutation(self):
   self.bootstrap()
   for h in [{'Host':'evil.example'},{'Origin':'https://evil.example'},{'X-CSRF-Token':''},{'Cookie':''},{'Origin':''}]:
