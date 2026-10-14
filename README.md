@@ -30,7 +30,7 @@ python3 -m venv .venv
 .venv/bin/python mac/package_host.py
 ```
 
-输出：`qa/host-build/dist/CodeBridge Host.app` 和 `qa/host-build/CodeBridgeHost-0.1.1-arm64.pkg`。默认包含上述生产中继地址。开发构建使用 ad-hoc 签名，不是可直接商业分发的签名公证包。启动组件默认打开配置网页；未配置真实公网服务时配对按钮禁用。
+输出：`qa/host-build/dist/CodeBridge Host.app` 和 `qa/host-build/CodeBridgeHost-0.1.2-arm64.pkg`。默认包含上述生产中继地址。开发构建使用 ad-hoc 签名，不是可直接商业分发的签名公证包。启动组件默认打开配置网页；未配置真实公网服务时配对按钮禁用。
 
 自建服务后，构建时传入自己的真实 HTTPS origin：
 
@@ -48,7 +48,7 @@ wrangler dev --local --config relay/v2/wrangler.toml --port 8789
 
 ## 一次安装与网页管理
 
-1. 安装官方独立 Codex.app。打开发布页 https://aly-codex-mobile.pages.dev/download/mac/index.html ，使用标准 `.pkg` 安装组件到 `/Applications/CodeBridge Host.app`；安装包仅写入此组件，不匹配或更新其他 Python 安装。
+1. 安装官方 Codex.app 或包含 Codex 的 ChatGPT.app（两种名称均会校验官方身份和签名）。打开发布页 https://aly-codex-mobile.pages.dev/download/mac/index.html ，使用标准 `.pkg` 安装组件到 `/Applications/CodeBridge Host.app`；安装包仅写入此组件，不匹配或更新其他 Python 安装。
 2. 首次打开 CodeBridge Host，在本机网页点击“完成设置并启动”。它校验官方 Codex 签名，启用共享入口，打开指定 Codex，并注册当前用户的 LaunchAgent。正在运行的 Codex 不会被关闭；首次共享需等用户下次正常启动接入。
 3. 此后登录时后台启动并通过共享入口打开 Codex。网页可关闭，后台保持运行；只有登录、联网且 Mac 未睡眠时才能连接。
 4. 后续通过应用程序或 Spotlight 打开 CodeBridge Host，即可打开管理网页。启动器只打开网页后退出；后台服务独立运行，重复打开不会启动第二个服务。按用户选择保留 60 秒单次 bootstrap 和 8 小时 HttpOnly/SameSite 会话，不新增管理密码；有效会话允许刷新，过期后重新打开组件。管理页仅本机 loopback 可用，不是公网管理页面。

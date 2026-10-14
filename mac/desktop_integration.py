@@ -29,9 +29,14 @@ def enable():
  if not getattr(sys,'frozen',False):raise ValueError('请安装码桥 Mac 组件后启用桌面共享入口')
  wrapper=Path(sys.executable).resolve();roots=[Path('/Applications').resolve(),(PATHS.home/'Applications').resolve()]
  if not any(wrapper.is_relative_to(root) for root in roots):raise ValueError('请先将码桥移到应用程序目录，再启用共享入口')
- app=next((root/'Codex.app' for root in roots if (root/'Codex.app').is_dir()),None)
- if app is None:raise ValueError('请先安装官方独立 Codex App 到应用程序目录')
- cli=app_cli(app)
+ errors=[]
+ for app in (root/name for root in roots for name in ('Codex.app','ChatGPT.app')):
+  if not app.is_dir():continue
+  try:cli=app_cli(app);break
+  except (OSError,ValueError,plistlib.InvalidFileException,subprocess.CalledProcessError) as error:errors.append(str(app)+': '+str(error))
+ else:
+  if errors:raise ValueError('未找到可用的官方 Codex 连接程序：'+ '; '.join(errors))
+  raise ValueError('请先将官方 Codex.app 或包含 Codex 的 ChatGPT.app 安装到应用程序目录')
  save({'enabled':True,'app':str(app.resolve()),'cli':str(cli),'wrapper':str(wrapper)})
  return {'status':'configured','message':'请通过码桥打开 Codex；已有窗口和任务保持运行，下次启动时接入共享服务。'}
 

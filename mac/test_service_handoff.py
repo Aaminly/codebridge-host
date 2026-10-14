@@ -45,7 +45,7 @@ asyncio.run(host.run(open_browser=False,managed=sys.argv[2]=='managed'))
      wait_for(lambda:request('GET','/api/status',cookie=cookie)[0]==200)
      self.assertIsNone(second.poll())
      self.assertEqual(request('POST','/api/pairings',{},cookie,'wrong')[0],403)
-     self.assertEqual(host.control('status')['hostVersion'],'0.1.1')
+     self.assertEqual(host.control('status')['hostVersion'],'0.1.2')
     finally:
      for job in jobs:
       if job.poll() is None:job.terminate()
@@ -91,7 +91,7 @@ asyncio.run(host.run(open_browser=mode=='upgrade',managed=mode=='managed'))
        if status.get('serviceManaged'):break
       except OSError:pass
       time.sleep(.05)
-     self.assertTrue(status['serviceManaged']);self.assertEqual(status['hostVersion'],'0.1.1')
+     self.assertTrue(status['serviceManaged']);self.assertEqual(status['hostVersion'],'0.1.2')
      self.assertTrue((home/'registered').exists());self.assertEqual(retained.read_text(),'retained draft')
     finally:
      if (home/'managed-pid').exists():

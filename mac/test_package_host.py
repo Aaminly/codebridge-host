@@ -21,7 +21,7 @@ class PackageChecks(unittest.TestCase):
    self.assertTrue(config.is_file(),'A normal Mac package has no production pairing service')
    self.assertEqual(json.loads(config.read_text()),{'origin':'https://aly-codex-mobile.pages.dev'})
    info=plistlib.loads((destination/'dist/CodeBridge Host.app/Contents/Info.plist').read_bytes())
-   self.assertEqual(info['CFBundleShortVersionString'],'0.1.1')
+   self.assertEqual(info['CFBundleShortVersionString'],'0.1.2')
    self.assertTrue(any(args[0]=='/usr/bin/pkgbuild' and '/Applications' in args for args in commands))
    self.assertEqual(len(components),1)
    self.assertEqual(components[0]['RootRelativeBundlePath'],'CodeBridge Host.app')

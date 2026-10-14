@@ -4,7 +4,7 @@ from pathlib import Path
 from desktop_discovery import discover,probe,choose
 from host_paths import PATHS
 from local_console import start_console
-HOST_VERSION="0.1.1"
+HOST_VERSION="0.1.2"
 
 class HostState:
  def __init__(self,expected_thread=None):
