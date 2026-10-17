@@ -2,7 +2,7 @@ import asyncio,json,os,secrets,hmac,ssl,uuid,base64
 from pathlib import Path
 from host_paths import PATHS
 from file_preview import collect_links,read_preview
-import project_creation,project_removal,file_upload,file_download
+import project_creation,project_removal,file_upload,file_download,thread_titles
 from websockets.asyncio.server import serve
 from websockets.asyncio.client import unix_connect
 BASE=PATHS.base
@@ -42,10 +42,18 @@ def resolve_local_images(value):
    return {'type':'image','url':'data:'+mime+';base64,'+base64.b64encode(data).decode('ascii'),'detail':value.get('detail')}
   except (OSError,ValueError) as e:return {'type':'imageError','message':str(e) if isinstance(e,ValueError) else '电脑上的原图已不可读取'}
  return {k:resolve_local_images(v) for k,v in value.items()}
+async def owned_file_work(action,*args):
+ # Cancellation must not close resources while their worker is still mutating them.
+ job=asyncio.create_task(asyncio.to_thread(action,*args))
+ try:return await asyncio.shield(job)
+ except asyncio.CancelledError:
+  await asyncio.gather(job,return_exceptions=True)
+  raise
 async def handle_phone(phone,desktop_path=None):
  allowed_files=set();selectable_files=set();uploads=file_upload.Uploads();downloads=file_download.Downloads()
+ title_requests={};endpoint=desktop_path or BASE/'desktop.sock'
  try:
-  async with unix_connect(str(desktop_path or BASE/'desktop.sock'),uri='ws://localhost/',max_size=32*1024*1024,close_timeout=1) as desktop:
+  async with unix_connect(str(endpoint),uri='ws://localhost/',max_size=32*1024*1024,close_timeout=1) as desktop:
    async def upstream():
     async for raw in phone:
      x=json.loads(raw);m=x.get('method')
@@ -59,7 +67,7 @@ async def handle_phone(phone,desktop_path=None):
       continue
      if m in {'mobile/files/uploadStart' ,'mobile/files/uploadChunk'}:
       try:
-       result=await asyncio.to_thread(uploads.start if m.endswith('Start') else uploads.chunk,x.get('params',{}))
+       result=await owned_file_work(uploads.start if m.endswith('Start') else uploads.chunk,x.get('params',{}))
        if result.get('path'):allowed_files.add(result['path'])
        await phone.send(json.dumps({'id':x['id'],'result':result}))
       except (OSError,ValueError,KeyError,TypeError) as e:await phone.send(json.dumps({'id':x.get('id'),'error':{'code':-32602,'message':str(e)}}))
@@ -68,7 +76,7 @@ async def handle_phone(phone,desktop_path=None):
       try:
        if m=='mobile/files/downloadStart':await file_download.LOCAL.start(BASE)
        action={'mobile/files/downloadStart':lambda p:downloads.start(p,allowed_files),'mobile/files/downloadChunk':downloads.chunk,'mobile/files/downloadEnd':downloads.end}[m]
-       result=await asyncio.to_thread(action,x.get('params',{}))
+       result=await owned_file_work(action,x.get('params',{}))
       except (OSError,ValueError,KeyError,TypeError) as e:result={'error':str(e)}
       await phone.send(json.dumps({'id':x['id'],'result':result}));continue
      if m=='mobile/files/read':
@@ -102,10 +110,19 @@ async def handle_phone(phone,desktop_path=None):
        raw=json.dumps(x)
       except OSError:
        await phone.send(json.dumps({'id':x.get('id'),'error':{'code':-32603,'message':'无法准备普通聊天工作目录，聊天尚未创建'}}));continue
+     if m=='turn/start' and isinstance(x.get('params'),dict) and isinstance(x.get('id'),(str,int)):
+      params=x['params'];inputs=params.get('input');text='\n'.join(item.get('text','') for item in (inputs if isinstance(inputs,list) else []) if isinstance(item,dict) and item.get('type')=='text' and isinstance(item.get('text'),str))
+      if text.strip():
+       if len(title_requests)>=32:title_requests.pop(next(iter(title_requests)))
+       title_requests[x['id']]=(params.get('threadId'),text[:4000])
      await desktop.send(raw)
    async def downstream():
     async for raw in desktop:
      value=json.loads(raw)
+     if 'method' not in value and isinstance(value.get('id'),(str,int)):
+      pending=title_requests.pop(value['id'],None)
+      if pending and 'error' not in value:
+       thread_titles.schedule(endpoint,pending[0],value.get('result',{}).get('turn',{}).get('id'),pending[1])
      collect_links(value,allowed_files)
      resolved=await asyncio.to_thread(resolve_local_images,value)
      for message in mobile_messages(json.dumps(resolved,ensure_ascii=False)):await phone.send(message)

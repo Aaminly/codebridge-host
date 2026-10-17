@@ -73,3 +73,7 @@ node --test relay/v2/test_pairing.mjs relay/v2/test_isolation.mjs
 `mac/` 包含实际运行入口、实例发现、网页、授权、Keychain、加密、中继客户端及共享项目/附件处理；`relay/v2/` 包含独立中继与隔离检查。商业手机客户端不在此组件仓库范围。
 
 第三方依赖保持原有许可；`LICENSES/` 包含固定依赖随发行元数据提供的许可证。项目自身采用根目录 `LICENSE` 中的 MIT 许可证。公开源码仓库：https://github.com/Aaminly/codebridge-host 。目前仅发布源码，没有发布已签名的安装包。
+
+## Phone conversation titles (0.1.3)
+
+After a phone-originated first turn is accepted, the host generates a concise title using an ephemeral thread on the connected desktop App Server, then persists it through `thread/name/set`. The original conversation is unchanged. Generation disables workspace instructions, apps, memories, MCP servers and execution tools; only up to 4000 characters of the accepted text are supplied to the existing model provider. Existing names take precedence. Failures preserve the accepted message and preview and produce a diagnostic warning. No separate CLI session is launched.

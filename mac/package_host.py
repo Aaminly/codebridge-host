@@ -18,12 +18,12 @@ def main():
  subprocess.run(['/usr/bin/xcrun','clang','-O2','-arch','arm64',str(root/'management_launcher.c'),'-o',str(binary)],check=True)
  import plistlib
  info=destination/'dist/CodeBridge Host.app/Contents/Info.plist'
- data=plistlib.loads(info.read_bytes());data['LSUIElement']=True;data['CFBundleShortVersionString']='0.1.2';data['CFBundleVersion']='3';info.write_bytes(plistlib.dumps(data))
+ data=plistlib.loads(info.read_bytes());data['LSUIElement']=True;data['CFBundleShortVersionString']='0.1.3';data['CFBundleVersion']='4';info.write_bytes(plistlib.dumps(data))
  # Changing Info.plist invalidates the build's ad-hoc signature; restore it for local execution.
  subprocess.run(['/usr/bin/codesign','--force','--deep','--sign','-',str(destination/'dist/CodeBridge Host.app')],check=True)
  with tempfile.TemporaryDirectory(prefix='codebridge-installer-') as tmp:
   stage=Path(tmp);shutil.copytree(destination/'dist/CodeBridge Host.app',stage/'CodeBridge Host.app',symlinks=True)
   components=destination/'installer-components.plist'
   components.write_bytes(plistlib.dumps([{'RootRelativeBundlePath':'CodeBridge Host.app','BundleIsRelocatable':False,'BundleHasStrictIdentifier':True,'BundleIsVersionChecked':True,'BundleOverwriteAction':'upgrade'}]))
-  subprocess.run(['/usr/bin/pkgbuild','--root',str(stage),'--component-plist',str(components),'--install-location','/Applications','--identifier','dev.codebridge.host','--version','0.1.2',str(destination/'CodeBridgeHost-0.1.2-arm64.pkg')],check=True)
+  subprocess.run(['/usr/bin/pkgbuild','--root',str(stage),'--component-plist',str(components),'--install-location','/Applications','--identifier','dev.codebridge.host','--version','0.1.3',str(destination/'CodeBridgeHost-0.1.3-arm64.pkg')],check=True)
 if __name__=='__main__':main()
